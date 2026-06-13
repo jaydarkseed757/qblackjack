@@ -16,28 +16,19 @@ A fully playable casino blackjack game written in a single file of Microsoft QBA
 
 ## Requirements
 
-- **Microsoft QBASIC 1.1** (`QBASIC.EXE`) — part of MS-DOS 5/6 or available as a free download
-- **DOSBox-X** (or any compatible DOS emulator) to run it on modern hardware
+- **Microsoft QBASIC 1.1** (`QBASIC.EXE`) — included with MS-DOS 5 and 6, or available as a free download
+- **DOSBox-X** or any compatible DOS emulator to run it on modern hardware
 
-## Running on macOS with DOSBox-X
+## Running
 
-```bash
-./run.sh
-```
-
-`run.sh` expects:
-- DOSBox-X at `/Applications/dosbox-x.app`
-- `Qbasic.exe` at `/Users/jay/projects/MSDOS-QBASIC/Qbasic.exe`
-
-Edit those paths at the top of `run.sh` if yours differ.
-
-## Running manually
+1. Mount a directory containing `QBASIC.EXE` and copy `BLACKJCK.BAS` into it (or mount them separately)
+2. From the DOS prompt:
 
 ```
 QBASIC.EXE /RUN BLACKJCK.BAS
 ```
 
-Or load `BLACKJCK.BAS` into QBASIC interactively and press **F5**.
+Or open `BLACKJCK.BAS` in QBASIC interactively and press **F5**.
 
 ## How to play
 
@@ -65,8 +56,7 @@ Or load `BLACKJCK.BAS` into QBASIC interactively and press **F5**.
 
 ```
 BLACKJCK.BAS   — complete game source (852 lines, QBASIC 1.1)
-run.sh         — launch script for macOS + DOSBox-X
-screenshots/   — title and gameplay screenshots for this README
+screenshots/   — screenshots for this README
 ```
 
 ## Code structure
