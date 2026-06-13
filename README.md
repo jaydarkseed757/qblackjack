@@ -9,10 +9,15 @@ A fully playable casino blackjack game written in a single file of Microsoft QBA
 - **VGA graphics** — SCREEN 12 (640×480, 16 colors): green felt table, graphical playing cards with drawn suit symbols, a cartoon dealer, chip stacks, and animated dealing
 - **5×7 bitmap font** — transparent custom lettering so card faces stay clean (PRINT would black out the background)
 - **Full casino rules** — single 52-card deck, dealer stands on all 17, blackjack pays 3:2, double down, insurance, late surrender
-- **Dealing animation** — cards slide from the deck pile across the table to their slot
+- **Dealing animation** — cards slide from the deck pile across the table to their slot, and the hole card flips when revealed
+- **Denomination chip display** — your bet is broken into 500/100/25/5/1 chips and drawn as a stack per denomination on the felt
 - **Sound effects** — SOUND-command beeps for dealing, chips, wins, losses, busts, blackjack, and shuffling
 - **Session statistics** — hands played/won/lost, pushes, peak bankroll; shown on both the cash-out and game-over screens
-- **No external files** — everything is in `BLACKJCK.BAS`; no libraries, no assets, no build step
+- **Persistent high score table** — top-5 all-time cash-outs saved to `HISCORE.DAT`; shown before the title screen and after each cash-out
+
+![A hand in play](screenshots/table.png)
+
+*A hand in play — the dealer with his hidden hole card, graphical suited cards, the action prompt, and your wager drawn as casino chips.*
 
 ## Requirements
 
@@ -55,8 +60,9 @@ Or open `BLACKJCK.BAS` in QBASIC interactively and press **F5**.
 ## Project structure
 
 ```
-BLACKJCK.BAS   — complete game source (852 lines, QBASIC 1.1)
-screenshots/   — screenshots for this README
+BLACKJCK.BAS      — complete game source (QBASIC 1.1)
+HISCORE.DAT     — top-5 high score table (created on first cash-out)
+screenshots/      — screenshots for this README
 ```
 
 ## Code structure
@@ -65,12 +71,12 @@ The source is divided into labelled sections:
 
 | Section | Subprograms |
 |---------|------------|
-| Initialization | `DEFINT A-Z`, shared state, `StatsType`, main loop |
+| Initialization | `DEFINT A-Z`, shared state, `StatsType`, `HiEntry`, main loop |
 | Gameplay | `PlayHand`, `DealOne` |
 | Money / UI | `GetBet`, `GetNum&`, `Settle`, `ShowStatus`, `ShowTotals`, `PromptLine`, `ClearPrompt` |
-| Cards | `ShuffleDeck`, `NextCard%`, `HandValue%`, `DrawCard`, `DrawBackCard`, `DrawSuit`, `AnimateDeal` |
-| Graphics | `BigLetter`, `BigText`, `DrawDealer`, `DrawChips`, `DrawTable`, `ClearTableArea`, `DealerSay` |
-| Screens | `TitleScreen`, `GameOver%`, `FarewellScreen`, `PrintStats` |
+| Cards | `ShuffleDeck`, `NextCard%`, `HandValue%`, `DrawCard`, `DrawBackCard`, `DrawSuit`, `AnimateDeal`, `FlipHoleCard` |
+| Graphics / Dealer | `BigLetter`, `BigText`, `DrawDealer`, `DrawChips`, `DrawBetChips`, `DrawTable`, `ClearTableArea`, `DealerSay` |
+| Screens / Stats | `TitleScreen`, `GameOver%`, `FarewellScreen`, `PrintStats`, `LoadHiScores`, `SaveHiScores`, `CheckHiScore`, `ShowHiScores` |
 | Utilities | `Delay`, `GetKey$`, `KeyWait%` |
 | Sound | `SndDeal`, `SndChip`, `SndWin`, `SndLose`, `SndBust`, `SndBlackjack`, `SndPush`, `SndShuffle` |
 
@@ -80,7 +86,7 @@ The source is divided into labelled sections:
 - No line continuations
 - No QuickBASIC 4.5-only features, no machine code, no external libraries
 - `PRINT` in SCREEN 12 draws with a black cell background — card corner ranks use the custom `BigLetter` bitmap font instead to preserve the white card face
-- All 38 `DECLARE` statements have matching `SUB`/`FUNCTION` definitions; `END SUB`/`END FUNCTION` counts are balanced
+- All 44 `DECLARE` statements have matching `SUB`/`FUNCTION` definitions; `END SUB`/`END FUNCTION` counts are balanced
 
 ## License
 

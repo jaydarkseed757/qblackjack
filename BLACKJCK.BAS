@@ -14,12 +14,18 @@ DECLARE SUB TitleScreen ()
 DECLARE SUB DrawTable ()
 DECLARE SUB DrawDealer (cx%, fy%, expr%)
 DECLARE SUB DrawChips (x%, y%, clr%)
+DECLARE SUB DrawBetChips (amt&)
 DECLARE SUB DrawCard (x%, y%, c%)
 DECLARE SUB DrawBackCard (x%, y%)
 DECLARE SUB DrawSuit (cx%, cy%, s%, size%, clr%)
 DECLARE SUB BigLetter (ch$, x%, y%, sc%, clr%)
 DECLARE SUB BigText (s$, x%, y%, sc%, clr%)
 DECLARE SUB AnimateDeal (dx%, dy%)
+DECLARE SUB FlipHoleCard (x%, y%, c%)
+DECLARE SUB LoadHiScores ()
+DECLARE SUB SaveHiScores ()
+DECLARE SUB CheckHiScore ()
+DECLARE SUB ShowHiScores ()
 DECLARE SUB DealOne (who%, hidden%)
 DECLARE SUB ShuffleDeck ()
 DECLARE SUB PlayHand ()
@@ -59,6 +65,12 @@ TYPE StatsType
    best AS LONG
 END TYPE
 
+TYPE HiEntry
+   nm AS STRING * 3
+   score AS LONG
+   hands AS INTEGER
+END TYPE
+
 DIM SHARED deck(1 TO 52)            ' the deck (1-52)
 DIM SHARED deckPos                  ' next card index into deck()
 DIM SHARED pHand(1 TO 12)           ' player hand
@@ -69,6 +81,7 @@ DIM SHARED bankroll AS LONG         ' player money
 DIM SHARED bet AS LONG              ' current wager
 DIM SHARED st AS StatsType          ' session statistics
 DIM SHARED dealerType               ' 0=Mike(brown) 1=Sandy(blonde) 2=Frank(gray+glasses)
+DIM SHARED hiTab(1 TO 5) AS HiEntry ' top-5 high score table (loaded from HISCORE.DAT)
 
 ' Card encoding: c = 1..52
 '   rank = ((c-1) MOD 13) + 1   (1=Ace ... 13=King)
@@ -77,6 +90,7 @@ DIM SHARED dealerType               ' 0=Mike(brown) 1=Sandy(blonde) 2=Frank(gray
 RANDOMIZE TIMER
 SCREEN 12
 dealerType = INT(RND * 3)
+LoadHiScores
 
 TitleScreen
 
@@ -112,7 +126,11 @@ DO WHILE playing = 1
    LOOP
 LOOP
 
-IF showFarewell = 1 THEN FarewellScreen
+IF showFarewell = 1 THEN
+   FarewellScreen
+   CheckHiScore
+   IF hiTab(1).score > 0 THEN ShowHiScores
+END IF
 SCREEN 0
 WIDTH 80, 25
 CLS
@@ -162,7 +180,7 @@ SUB PlayHand
 
    ' ---- dealer blackjack ends the hand immediately ----
    IF dBJ = 1 THEN
-      DrawCard 104, 128, dHand(2)
+      FlipHoleCard 104, 128, dHand(2)
       ShowTotals 1
       IF ins& > 0 THEN
          bankroll = bankroll + 2 * ins&
@@ -222,6 +240,7 @@ SUB PlayHand
       CASE "D"
          bet = bet * 2
          ShowStatus
+         DrawBetChips bet
          DealerSay "Doubling down!"
          DealOne 1, 0
          EXIT DO
@@ -235,7 +254,7 @@ SUB PlayHand
    pv = HandValue(1)
    ShowTotals 0
    IF pv > 21 THEN
-      DrawCard 104, 128, dHand(2)
+      FlipHoleCard 104, 128, dHand(2)
       ShowTotals 1
       DrawDealer 320, 48, 1
       Settle -2, bet, "Bust! Dealer wins"
@@ -244,8 +263,7 @@ SUB PlayHand
 
    ' ---- dealer turn: reveal hole card, hit to 17, stand on all 17 ----
    DealerSay "Dealer's turn..."
-   DrawCard 104, 128, dHand(2)
-   SOUND 700, .5
+   FlipHoleCard 104, 128, dHand(2)
    ShowTotals 1
    Delay 1.2
    DO WHILE HandValue(2) < 17
@@ -308,6 +326,7 @@ SUB GetBet
          bet = b&
          ClearPrompt
          ShowStatus
+         DrawBetChips bet
          EXIT SUB
       END IF
       SOUND 150, 2
@@ -557,6 +576,27 @@ SUB AnimateDeal (dx, dy)
    DrawBackCard 568, 224            ' restore the deck pile
 END SUB
 
+SUB FlipHoleCard (x, y, c)
+   ' Flip-reveals the hole card at (x,y): back folds away, face unfolds.
+   ' Phase 1: cover back from outer edges inward — green strips widen each step.
+   FOR strip = 4 TO 28 STEP 4
+      LINE (x, y)-(x + strip - 1, y + 79), 2, BF
+      LINE (x + 56 - strip, y)-(x + 55, y + 79), 2, BF
+      Delay .012
+   NEXT strip
+   SOUND 600, 1
+   ' Phase 2: reveal face from center outward — redraw full face card each step,
+   '           then re-cover the outer edges (which shrink each iteration).
+   FOR strip = 28 TO 0 STEP -4
+      DrawCard x, y, c
+      IF strip > 0 THEN
+         LINE (x, y)-(x + strip - 1, y + 79), 2, BF
+         LINE (x + 56 - strip, y)-(x + 55, y + 79), 2, BF
+      END IF
+      Delay .012
+   NEXT strip
+END SUB
+
 ' --------------------------- GRAPHICS --------------------------------
 
 SUB BigLetter (ch$, x, y, sc, clr)
@@ -737,6 +777,46 @@ SUB DrawChips (x, y, clr)
    CIRCLE (x, y - 20), 14, 15, , , .35
 END SUB
 
+SUB DrawBetChips (amt&)
+   ' Breaks the bet into casino denominations and draws a stack per value.
+   ' Lives in the open felt below the deck pile (x 486-630, y 306-418),
+   ' which the dealing animation never crosses.
+   DIM dv(1 TO 5), dc(1 TO 5), dr(1 TO 5)
+   dv(1) = 500: dc(1) = 5: dr(1) = 15        ' purple, white rim
+   dv(2) = 100: dc(2) = 0: dr(2) = 15        ' black,  white rim
+   dv(3) = 25: dc(3) = 10: dr(3) = 15        ' green,  white rim
+   dv(4) = 5: dc(4) = 4: dr(4) = 15          ' red,    white rim
+   dv(5) = 1: dc(5) = 15: dr(5) = 8          ' white,  gray rim
+   LINE (486, 306)-(630, 420), 2, BF
+   IF amt& <= 0 THEN EXIT SUB
+   COLOR 14
+   LOCATE 21, 64: PRINT "YOUR BET";
+   due& = amt&
+   col = 0
+   FOR d = 1 TO 5
+      n& = 0
+      DO WHILE due& >= dv(d)
+         due& = due& - dv(d)
+         n& = n& + 1
+      LOOP
+      IF n& > 0 THEN
+         cx = 504 + col * 28
+         vis = n&
+         IF vis > 8 THEN vis = 8
+         FOR i = 0 TO vis - 1
+            cy = 396 - i * 4
+            CIRCLE (cx, cy), 11, dc(d), , , .4
+            PAINT (cx, cy), dc(d), dc(d)
+            CIRCLE (cx, cy), 11, dr(d), , , .4
+         NEXT i
+         COLOR 15
+         v$ = LTRIM$(STR$(dv(d)))
+         LOCATE 26, (cx \ 8) + 1 - LEN(v$) \ 2: PRINT v$;
+         col = col + 1
+      END IF
+   NEXT d
+END SUB
+
 SUB DrawTable
    ' Paints the casino table and all permanent fixtures.
    CLS
@@ -776,6 +856,7 @@ END SUB
 
 SUB TitleScreen
    ' Shareware-style title screen with big lettering, cards and dealer.
+   IF hiTab(1).score > 0 THEN ShowHiScores
    CLS
    LINE (4, 4)-(635, 475), 14, B
    LINE (8, 8)-(631, 471), 14, B
@@ -798,7 +879,8 @@ SUB TitleScreen
    COLOR 7
    LOCATE 22, 26: PRINT "(C) 1992 GREEN FELT SOFTWARE";
    LOCATE 23, 29: PRINT "SHAREWARE EDITION 1.0";
-   SOUND 392, 2: SOUND 523, 2: SOUND 659, 2: SOUND 784, 5
+   tune$ = "T160 O4 L8 E G O5 C E D C O4 A G F A O5 C O4 A G B O5 D O4 G P4"
+   PLAY "MB " + tune$
    DO
       COLOR 14
       LOCATE 27, 26: PRINT "PRESS ANY KEY TO ENTER CASINO";
@@ -806,6 +888,7 @@ SUB TitleScreen
       COLOR 8
       LOCATE 27, 26: PRINT "PRESS ANY KEY TO ENTER CASINO";
       IF KeyWait(.3) = 1 THEN EXIT DO
+      IF PLAY(0) < 5 THEN PLAY "MB " + tune$
    LOOP
 END SUB
 
@@ -849,6 +932,105 @@ SUB PrintStats (row)
    LOCATE row + 2, 28: PRINT "HANDS LOST ........"; st.lost;
    LOCATE row + 3, 28: PRINT "PUSHES ............"; st.pushed;
    LOCATE row + 4, 28: PRINT "LARGEST BANKROLL .. $"; LTRIM$(STR$(st.best));
+END SUB
+
+SUB LoadHiScores
+   ' Read up to 5 records from HISCORE.DAT into hiTab().
+   DIM e AS HiEntry
+   OPEN "HISCORE.DAT" FOR RANDOM AS #1 LEN = 9
+   FOR i = 1 TO 5
+      IF i * 9 > LOF(1) THEN EXIT FOR
+      GET #1, i, e
+      hiTab(i).nm = e.nm
+      hiTab(i).score = e.score
+      hiTab(i).hands = e.hands
+   NEXT i
+   CLOSE #1
+END SUB
+
+SUB SaveHiScores
+   ' Write all 5 hiTab() entries to HISCORE.DAT.
+   DIM e AS HiEntry
+   OPEN "HISCORE.DAT" FOR RANDOM AS #1 LEN = 9
+   FOR i = 1 TO 5
+      e.nm = hiTab(i).nm
+      e.score = hiTab(i).score
+      e.hands = hiTab(i).hands
+      PUT #1, i, e
+   NEXT i
+   CLOSE #1
+END SUB
+
+SUB CheckHiScore
+   ' If bankroll beats an existing entry, ask for initials and insert.
+   IF st.played = 0 THEN EXIT SUB
+   rank = 0
+   FOR i = 1 TO 5
+      IF bankroll > hiTab(i).score THEN rank = i: EXIT FOR
+   NEXT i
+   IF rank = 0 THEN EXIT SUB
+   CLS
+   BigText "NEW HIGH", 208, 80, 4, 8
+   BigText "NEW HIGH", 206, 78, 4, 14
+   BigText "SCORE !", 222, 148, 4, 8
+   BigText "SCORE !", 220, 146, 4, 14
+   COLOR 15
+   LOCATE 18, 28: PRINT "YOU REACHED RANK #"; LTRIM$(STR$(rank));
+   LOCATE 19, 25: PRINT "CASH OUT: $"; LTRIM$(STR$(bankroll)); "  IN "; LTRIM$(STR$(st.played)); " HANDS";
+   COLOR 14
+   LOCATE 22, 28: PRINT "ENTER YOUR INITIALS (A-Z):";
+   COLOR 15
+   LOCATE 23, 38: PRINT "_ _ _";
+   ini$ = "   "
+   nch = 0
+   DO WHILE nch < 3
+      k$ = GetKey$
+      IF LEN(k$) = 1 THEN
+         IF k$ >= "A" AND k$ <= "Z" THEN
+            nch = nch + 1
+            MID$(ini$, nch, 1) = k$
+            COLOR 10
+            LOCATE 23, 36 + nch * 2: PRINT k$;
+         ELSEIF k$ = CHR$(8) AND nch > 0 THEN
+            COLOR 15
+            LOCATE 23, 36 + nch * 2: PRINT "_";
+            nch = nch - 1
+         END IF
+      END IF
+   LOOP
+   FOR i = 5 TO rank + 1 STEP -1
+      hiTab(i).nm = hiTab(i - 1).nm
+      hiTab(i).score = hiTab(i - 1).score
+      hiTab(i).hands = hiTab(i - 1).hands
+   NEXT i
+   hiTab(rank).nm = ini$
+   hiTab(rank).score = bankroll
+   hiTab(rank).hands = st.played
+   SaveHiScores
+END SUB
+
+SUB ShowHiScores
+   ' Displays the top-5 hall of fame; waits for a keypress.
+   CLS
+   BigText "HALL OF FAME", 176, 50, 4, 8
+   BigText "HALL OF FAME", 174, 48, 4, 14
+   COLOR 15
+   LOCATE 13, 27: PRINT "RANK  NAME   CASH OUT   HANDS PLAYED";
+   COLOR 7
+   LOCATE 14, 27: PRINT "----  ----  ----------  ------------";
+   FOR i = 1 TO 5
+      LOCATE 14 + i, 27
+      IF hiTab(i).score > 0 THEN
+         COLOR 10
+         PRINT "  "; LTRIM$(STR$(i)); ".  "; hiTab(i).nm; "    $"; LTRIM$(STR$(hiTab(i).score)); "        "; LTRIM$(STR$(hiTab(i).hands));
+      ELSE
+         COLOR 8
+         PRINT "  "; LTRIM$(STR$(i)); ".  ---";
+      END IF
+   NEXT i
+   COLOR 7
+   LOCATE 24, 30: PRINT "PRESS ANY KEY TO CONTINUE";
+   k$ = GetKey$
 END SUB
 
 ' --------------------------- UTILITIES ---------------------------------

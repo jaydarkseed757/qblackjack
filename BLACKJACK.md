@@ -6,12 +6,12 @@ A deep-dive into the code structure, design decisions, and QBASIC-specific techn
 
 ## Overall architecture
 
-The file is a single 852-line QBASIC 1.1 program. QBASIC requires all `SUB` and `FUNCTION` procedures to be declared before the main body, so the file opens with 38 `DECLARE` statements. The main program body (the part that runs at startup, before any SUB/FUNCTION definitions) covers lines 51–115. Everything below that is subprograms, which QBASIC hoists and compiles before execution begins.
+The file is a single ~1100-line QBASIC 1.1 program. QBASIC requires all `SUB` and `FUNCTION` procedures to be declared before the main body, so the file opens with 44 `DECLARE` statements. The module-level code (the `TYPE` definitions, the shared `DIM` block, and the startup body that runs top-to-bottom from `RANDOMIZE TIMER` to `END`) sits above the first procedure definition. Everything below that is subprograms, which QBASIC hoists and compiles before execution begins.
 
-The code is divided into eight labelled sections separated by comment banners:
+The code is divided into ten labelled sections separated by comment banners:
 
 ```
-INITIALIZATION → GAMEPLAY → MONEY → CARDS → GRAPHICS → SCREENS → STATISTICS → UTILITIES → SOUND
+INITIALIZATION → GAMEPLAY → MONEY → CARDS → GRAPHICS → DEALER → SCREENS → STATISTICS → UTILITIES → SOUND
 ```
 
 Global state is held in `DIM SHARED` variables accessible from every SUB/FUNCTION — QBASIC has no modules or namespaces, so this is the idiomatic way to share state without passing every variable as a parameter.
@@ -156,6 +156,8 @@ p(7) = 17   = 10001  →  X___X
 
 **DrawBackCard** draws a blue card with a diamond grid pattern — two nested loops draw four `LINE` segments per grid point forming a ◇ shape.
 
+**FlipHoleCard** animates the hole-card reveal. It runs two mirror-image loops over a `strip` variable from 4 to 28 in steps of 4 (half the card's 56-pixel width). Phase 1 overdaws felt-green (`LINE ... BF`) rectangles of increasing width on both the left and right edges of the card, making the visible back-card width shrink to zero — simulating the card rotating edge-on. At the pivot the face card is drawn underneath the full green covers, a short click sound (`SOUND 600, 1`) fires, then phase 2 runs the loop in reverse, removing the green from the outside in until the face is fully exposed. All three hole-card reveal sites — dealer blackjack, player bust, and normal dealer turn — call `FlipHoleCard` instead of calling `DrawCard` directly.
+
 **DrawSuit** draws filled suit symbols using QBASIC graphics primitives:
 - **Hearts** — two overlapping circles filled with PAINT, then a downward triangle filled by painting the center
 - **Diamonds** — four LINE segments forming a ◇, then PAINT to fill
@@ -176,6 +178,30 @@ p(7) = 17   = 10001  →  X___X
 After the card arrives, `DrawBackCard 568, 224` redraws the deck pile (the animation erased it during the horizontal phase). The 24-pixel step and 15ms delay were tuned to look smooth without being slow.
 
 All animation happens in the y=224 "lane" between the dealer row (y=128) and player row (y=304) — this clear strip means the sliding card doesn't clip any placed cards.
+
+---
+
+## Bet chip display (DrawBetChips)
+
+`DrawBetChips(amt&)` visualizes the current wager as physical casino chips. It performs a greedy denomination breakdown of the bet into 500 / 100 / 25 / 5 / 1 values (purple / black / green / red / white chips), then draws one vertical stack per denomination present, packed left to right, with the denomination value printed beneath each stack:
+
+```basic
+due& = amt&
+FOR d = 1 TO 5
+   n& = 0
+   DO WHILE due& >= dv(d)
+      due& = due& - dv(d)
+      n& = n& + 1
+   LOOP
+   ...draw a stack of min(n&, 8) chips...
+NEXT d
+```
+
+Each chip is a flattened ellipse (`CIRCLE ... aspect .4`) filled with `PAINT` and outlined with a contrasting rim color. Stack height is the chip count (visually capped at 8 — the status bar always shows the exact dollar total).
+
+The display lives in the felt box `(486,306)-(630,418)` — deliberately placed **below** the deck pile (which ends at y=304) and **right** of the player card row. This is the one open felt region the dealing animation never crosses, so the chips are never clipped or erased mid-deal. `DrawBetChips` is called from `GetBet` once a wager is accepted and again from the double-down path after the bet doubles. `ClearTableArea` wipes the box at the start of each hand, so no stale chips carry over.
+
+Note `due&` is named to avoid `rem` — `REM` is the BASIC comment keyword and cannot be used as a variable.
 
 ---
 
@@ -244,7 +270,7 @@ All sound uses QBASIC's `SOUND freq, duration` command (PC speaker). Duration is
 | Push | Flat repeated note (A4 twice) — neutral |
 | Shuffle | Rising scale 400→900 Hz in 100 Hz steps |
 
-Title screen plays a four-note ascending arpeggio (G4→C5→E5→G5) as a jingle on entry.
+The title screen plays a looping 16-note casino-jazz phrase using `PLAY "MB ..."` (music background mode). The melody is stored in a local string `tune$` and started once before the "PRESS ANY KEY" blink loop. Inside the loop the program checks `PLAY(0)` — the number of notes remaining in QBASIC's background music buffer — and refills with another `PLAY "MB " + tune$` call when fewer than five notes remain, ensuring seamless looping. When the player presses a key the program continues; any residual buffered notes drain naturally before the first `SOUND` call from gameplay.
 
 ---
 
@@ -272,9 +298,33 @@ This exits immediately on rollover rather than hanging. An imperfect delay at mi
 
 ---
 
+## High score persistence (HISCORE.DAT)
+
+The top-5 table is stored in a random-access binary file `HISCORE.DAT` alongside `BLACKJCK.BAS`. Each record is a `HiEntry` TYPE:
+
+```basic
+TYPE HiEntry
+   nm    AS STRING * 3   ' 3-char initials
+   score AS LONG         ' final bankroll at cash-out
+   hands AS INTEGER      ' hands played that session
+END TYPE
+```
+
+Record size = 3 + 4 + 2 = 9 bytes. `OPEN "HISCORE.DAT" FOR RANDOM AS #1 LEN = 9` then `GET`/`PUT` at record positions 1–5. `LOF(1)` returns total file bytes; `i * 9 > LOF(1)` guards against reading past end-of-file on first run.
+
+**Flow:** `LoadHiScores` runs once at startup. After the player cashes out, `CheckHiScore` compares `bankroll` against the five stored scores (sorted descending). If it qualifies, the player enters 3-char initials via a simple `INKEY$` loop, the table is shifted down from the insertion point, the new entry is inserted, and `SaveHiScores` writes all five records back. `ShowHiScores` then draws the full table with `BigText "HALL OF FAME"` and color-coded rows. It is also called at the start of `TitleScreen` if the table is non-empty, giving the classic DOS game "hall of fame splash before the main title" feel.
+
+Only `FarewellScreen` sessions (player cashes out with money) are eligible for the table — bankrupt sessions (`GameOver`) are not recorded since the final bankroll is always zero.
+
+---
+
 ## What's not implemented
 
 - **Split pairs** — would require a second hand array (`pHand2`) and a second player turn loop in `PlayHand`, plus UI to show two hands simultaneously. The biggest gap in casino rules.
-- **`PLAY`-based music** — the QBASIC `PLAY` command can drive background music via a music string; not yet used
-- **File I/O** — no high score persistence; QBASIC supports `OPEN` / `WRITE #` / `INPUT #` but adds complexity and an external file dependency
-- **Multiple decks** — would change `ShuffleDeck` to fill a larger array and adjust the reshuffle threshold
+- **Multiple decks** — a 2/4/6-deck shoe with a visible cut card; would change `ShuffleDeck` to fill a larger array and adjust the reshuffle threshold
+- **Configurable bankroll & bet limits** — startup choice of $500/$1000/$5000 and a table min/max
+- **Side bets** — Perfect Pairs or 21+3, wired through `Settle`
+- **Basic strategy hint mode** — optional "book" play shown before the player acts
+- **`PLAY`-based in-game music** — background music plays only on the title screen; in-game sounds use `SOUND` only
+- **Card flip animation for new cards** — `FlipHoleCard` animates the hole-card reveal, but hit/deal animations still show the card back sliding in without a face-reveal flip
+- **Status-bar win/loss flash and a reshuffle riffle animation** — small polish items still on the list
