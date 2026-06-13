@@ -17,7 +17,7 @@ A fully playable casino blackjack game written in a single file of Microsoft QBA
 ## Requirements
 
 - **Microsoft QBASIC 1.1** (`QBASIC.EXE`) — included with MS-DOS 5 and 6, or available as a free download
-- **DOSBox-X** or any compatible DOS emulator to run it on modern hardware
+- **DOSBox-X** or any compatible DOS emulator to run it on modern hardware — [dosbox-x.com](https://dosbox-x.com)
 
 ## Running
 
