@@ -12,7 +12,7 @@ DEFINT A-Z
 
 DECLARE SUB TitleScreen ()
 DECLARE SUB DrawTable ()
-DECLARE SUB DrawDealer (cx%, fy%)
+DECLARE SUB DrawDealer (cx%, fy%, expr%)
 DECLARE SUB DrawChips (x%, y%, clr%)
 DECLARE SUB DrawCard (x%, y%, c%)
 DECLARE SUB DrawBackCard (x%, y%)
@@ -68,6 +68,7 @@ DIM SHARED dCount                   ' cards in dealer hand
 DIM SHARED bankroll AS LONG         ' player money
 DIM SHARED bet AS LONG              ' current wager
 DIM SHARED st AS StatsType          ' session statistics
+DIM SHARED dealerType               ' 0=Mike(brown) 1=Sandy(blonde) 2=Frank(gray+glasses)
 
 ' Card encoding: c = 1..52
 '   rank = ((c-1) MOD 13) + 1   (1=Ace ... 13=King)
@@ -75,12 +76,14 @@ DIM SHARED st AS StatsType          ' session statistics
 
 RANDOMIZE TIMER
 SCREEN 12
+dealerType = INT(RND * 3)
 
 TitleScreen
 
 showFarewell = 0
 playing = 1
 DO WHILE playing = 1
+   dealerType = INT(RND * 3)
    bankroll = 1000
    bet = 0
    st.played = 0: st.won = 0: st.lost = 0: st.pushed = 0
@@ -126,6 +129,7 @@ SUB PlayHand
       Delay .8
    END IF
    ClearTableArea
+   DrawDealer 320, 48, 0
    ShowStatus
    DealerSay "Place your bet"
    GetBet
@@ -167,8 +171,10 @@ SUB PlayHand
          ClearPrompt
       END IF
       IF pBJ = 1 THEN
+         DrawDealer 320, 48, 1
          Settle 0, 0, "Push"
       ELSE
+         DrawDealer 320, 48, 3
          Settle -1, bet, "Dealer wins"
       END IF
       EXIT SUB
@@ -183,6 +189,7 @@ SUB PlayHand
 
    ' ---- player blackjack pays 3:2 ----
    IF pBJ = 1 THEN
+      DrawDealer 320, 48, 2
       Settle 2, bet * 3 \ 2, "Blackjack!"
       EXIT SUB
    END IF
@@ -219,6 +226,7 @@ SUB PlayHand
          DealOne 1, 0
          EXIT DO
       CASE "R"
+         DrawDealer 320, 48, 0
          Settle -1, bet \ 2, "Surrendered"
          EXIT SUB
       END SELECT
@@ -229,6 +237,7 @@ SUB PlayHand
    IF pv > 21 THEN
       DrawCard 104, 128, dHand(2)
       ShowTotals 1
+      DrawDealer 320, 48, 1
       Settle -2, bet, "Bust! Dealer wins"
       EXIT SUB
    END IF
@@ -248,12 +257,16 @@ SUB PlayHand
    ' ---- payout ----
    dv = HandValue(2)
    IF dv > 21 THEN
+      DrawDealer 320, 48, 2
       Settle 1, bet, "Dealer busts! You win!"
    ELSEIF dv > pv THEN
+      DrawDealer 320, 48, 1
       Settle -1, bet, "Dealer wins"
    ELSEIF dv < pv THEN
+      DrawDealer 320, 48, 4
       Settle 1, bet, "You win!"
    ELSE
+      DrawDealer 320, 48, 0
       Settle 0, 0, "Push"
    END IF
 END SUB
@@ -613,41 +626,106 @@ END SUB
 
 ' ---------------------------- DEALER ----------------------------------
 
-SUB DrawDealer (cx, fy)
-   ' Cartoon casino dealer.  cx = center x, fy = face center y.
-   ' jacket
+SUB DrawDealer (cx, fy, expr)
+   ' Cartoon casino dealer, with expressions and three dealer types.
+   ' expr: 0=neutral  1=happy(dealer won)  2=shocked  3=celebrating(dealer BJ)  4=sad(player won)
+   ' dealerType (global): 0=Mike(brown hair/red tie)  1=Sandy(blonde/blue tie)  2=Frank(gray/purple tie/glasses)
+
+   ' hair and tie colors by dealer type
+   IF dealerType = 1 THEN
+      hc = 14: tc = 9             ' Sandy: yellow hair, blue tie
+   ELSEIF dealerType = 2 THEN
+      hc = 8: tc = 5              ' Frank: dark gray hair, purple tie
+   ELSE
+      hc = 6: tc = 4              ' Mike: brown hair, red tie
+   END IF
+
+   ' jacket and shirt
    LINE (cx - 34, fy + 16)-(cx + 34, fy + 62), 0, BF
-   ' shirt
    LINE (cx - 7, fy + 16)-(cx + 7, fy + 44), 15, BF
-   ' lapels
    LINE (cx - 7, fy + 16)-(cx - 16, fy + 34), 8
    LINE (cx + 7, fy + 16)-(cx + 16, fy + 34), 8
+
    ' hair
-   CIRCLE (cx, fy - 8), 19, 6
-   PAINT (cx, fy - 8), 6, 6
+   CIRCLE (cx, fy - 8), 19, hc
+   PAINT (cx, fy - 8), hc, hc
+
    ' face
    CIRCLE (cx, fy), 18, 0
    PAINT (cx, fy), 7, 0
-   ' eyes
-   CIRCLE (cx - 7, fy - 4), 2, 0
-   PAINT (cx - 7, fy - 4), 0, 0
-   CIRCLE (cx + 7, fy - 4), 2, 0
-   PAINT (cx + 7, fy - 4), 0, 0
-   ' eyebrows
-   LINE (cx - 10, fy - 9)-(cx - 4, fy - 9), 0
-   LINE (cx + 4, fy - 9)-(cx + 10, fy - 9), 0
-   ' nose
+
+   ' eyes vary by expression
+   SELECT CASE expr
+   CASE 2                          ' shocked: wider eyes
+      CIRCLE (cx - 7, fy - 4), 3, 0
+      PAINT (cx - 7, fy - 4), 0, 0
+      CIRCLE (cx + 7, fy - 4), 3, 0
+      PAINT (cx + 7, fy - 4), 0, 0
+   CASE 3                          ' celebrating: wink (right eye closed)
+      CIRCLE (cx - 7, fy - 4), 2, 0
+      PAINT (cx - 7, fy - 4), 0, 0
+      LINE (cx + 5, fy - 4)-(cx + 9, fy - 4), 0
+   CASE ELSE                       ' normal eyes
+      CIRCLE (cx - 7, fy - 4), 2, 0
+      PAINT (cx - 7, fy - 4), 0, 0
+      CIRCLE (cx + 7, fy - 4), 2, 0
+      PAINT (cx + 7, fy - 4), 0, 0
+   END SELECT
+
+   ' eyebrows vary by expression
+   SELECT CASE expr
+   CASE 1                          ' happy: raised flat
+      LINE (cx - 10, fy - 11)-(cx - 4, fy - 11), 0
+      LINE (cx + 4, fy - 11)-(cx + 10, fy - 11), 0
+   CASE 2                          ' shocked: outer corners raised (arched)
+      LINE (cx - 10, fy - 13)-(cx - 4, fy - 11), 0
+      LINE (cx + 4, fy - 11)-(cx + 10, fy - 13), 0
+   CASE 3                          ' celebrating: angled outward-up
+      LINE (cx - 10, fy - 12)-(cx - 4, fy - 9), 0
+      LINE (cx + 4, fy - 9)-(cx + 10, fy - 12), 0
+   CASE 4                          ' sad: drooping inward
+      LINE (cx - 10, fy - 9)-(cx - 4, fy - 12), 0
+      LINE (cx + 4, fy - 12)-(cx + 10, fy - 9), 0
+   CASE ELSE                       ' neutral: straight
+      LINE (cx - 10, fy - 9)-(cx - 4, fy - 9), 0
+      LINE (cx + 4, fy - 9)-(cx + 10, fy - 9), 0
+   END SELECT
+
+   ' nose (same always)
    LINE (cx, fy - 2)-(cx - 2, fy + 4), 0
    LINE (cx - 2, fy + 4)-(cx, fy + 4), 0
-   ' smile
-   CIRCLE (cx, fy + 6), 8, 0, 3.6, 5.8
+
+   ' mouth varies by expression
+   SELECT CASE expr
+   CASE 1                          ' happy: bigger smile
+      CIRCLE (cx, fy + 5), 9, 0, 3.6, 5.8
+   CASE 2                          ' shocked: filled O-mouth
+      CIRCLE (cx, fy + 7), 4, 0
+      PAINT (cx, fy + 7), 0, 0
+   CASE 3                          ' celebrating: wide open grin
+      CIRCLE (cx, fy + 4), 11, 0, 3.6, 5.8
+   CASE 4                          ' sad: frown (V shape)
+      LINE (cx - 6, fy + 9)-(cx, fy + 13), 0
+      LINE (cx, fy + 13)-(cx + 6, fy + 9), 0
+   CASE ELSE                       ' neutral smile
+      CIRCLE (cx, fy + 6), 8, 0, 3.6, 5.8
+   END SELECT
+
    ' bow tie
-   LINE (cx - 12, fy + 18)-(cx - 2, fy + 26), 4, BF
-   LINE (cx + 2, fy + 18)-(cx + 12, fy + 26), 4, BF
-   LINE (cx - 2, fy + 20)-(cx + 2, fy + 24), 4, BF
+   LINE (cx - 12, fy + 18)-(cx - 2, fy + 26), tc, BF
+   LINE (cx + 2, fy + 18)-(cx + 12, fy + 26), tc, BF
+   LINE (cx - 2, fy + 20)-(cx + 2, fy + 24), tc, BF
+
    ' jacket buttons
    PSET (cx, fy + 50), 15
    PSET (cx, fy + 56), 15
+
+   ' Frank's glasses (drawn last, over the eyes)
+   IF dealerType = 2 THEN
+      LINE (cx - 11, fy - 7)-(cx - 3, fy - 1), 0, B
+      LINE (cx + 3, fy - 7)-(cx + 11, fy - 1), 0, B
+      LINE (cx - 3, fy - 4)-(cx + 3, fy - 4), 0
+   END IF
 END SUB
 
 SUB DrawChips (x, y, clr)
@@ -667,7 +745,7 @@ SUB DrawTable
    LINE (5, 5)-(634, 474), 14, B
    COLOR 14
    LOCATE 2, 4: PRINT "* BLACKJACK DELUXE *";
-   DrawDealer 320, 48
+   DrawDealer 320, 48, 0
    DealerSay "Welcome to the table!"
    LINE (6, 428)-(633, 428), 14
    LINE (6, 431)-(633, 473), 0, BF
@@ -713,7 +791,7 @@ SUB TitleScreen
    DrawCard 248, 184, 40
    DrawCard 312, 196, 13
    DrawCard 376, 184, 25
-   DrawDealer 120, 220
+   DrawDealer 120, 220, 0
    DrawChips 520, 250, 4
    DrawChips 556, 262, 9
    DrawChips 488, 268, 15
