@@ -203,14 +203,29 @@ Text positions use QBASIC's `LOCATE row, col` (1-based, 80×30 character grid ma
 
 ## The dealer character
 
-`DrawDealer(cx, fy)` draws a cartoon dealer using only LINE, CIRCLE, and PAINT:
+`DrawDealer(cx, fy, expr)` draws a cartoon dealer using only LINE, CIRCLE, and PAINT. It reads the global `dealerType` to pick hair and tie colors, then draws facial features that vary by expression.
 
-- Body: a filled black rectangle (jacket) with a white rectangle on top (shirt) and two diagonal lines (lapels)
-- Head: a filled orange/brown circle (hair) slightly offset up, then a filled grey circle (face) on top
-- Face details: two filled black circles (eyes), two horizontal lines (eyebrows), an L-shaped nose, a CIRCLE arc for the smile
-- Bow tie: two filled red rectangles flanking a small connector rectangle
+**Dealer types** — randomized once per session via `dealerType = INT(RND * 3)`:
 
-The character is drawn relative to `(cx, fy)` so it can be placed anywhere — the title screen uses `DrawDealer 120, 220` and the gameplay table uses `DrawDealer 320, 48`.
+| Type | Name | Hair color | Tie color | Extra |
+|------|------|-----------|-----------|-------|
+| 0 | Mike | Brown (6) | Red (4) | — |
+| 1 | Sandy | Blonde (14) | Blue (9) | — |
+| 2 | Frank | Dark gray (8) | Purple (5) | Glasses |
+
+Frank's glasses are drawn last (after the eyes) as two `LINE ... B` rectangles with a bridge line, so they overlay the eye circles correctly.
+
+**Expressions** — set by `PlayHand` just before each `Settle` call:
+
+| expr | Situation | Eyes | Eyebrows | Mouth |
+|------|-----------|------|----------|-------|
+| 0 | Neutral / start of hand / push | Normal circles | Straight | Smile arc r=8 |
+| 1 | Dealer wins / player busts | Normal | Raised flat | Bigger smile arc r=9 |
+| 2 | Dealer busts / player blackjack | Wide circles (r=3) | Outer corners raised | Filled O-mouth circle |
+| 3 | Dealer blackjack win | Wink (right eye = line) | Angled outward-up | Wide grin arc r=11 |
+| 4 | Player wins | Normal | Drooping inward | Frown (two LINE segments forming a V) |
+
+The character is drawn relative to `(cx, fy)` so it works anywhere — the title screen uses `DrawDealer 120, 220, 0` and gameplay uses `DrawDealer 320, 48, expr`. Because the dealer art lives above y=112 and `ClearTableArea` only wipes y=112–424, expressions persist across the hand until explicitly redrawn.
 
 ---
 
