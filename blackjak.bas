@@ -15,6 +15,7 @@ DECLARE SUB DrawTable ()
 DECLARE SUB DrawDealer (cx%, fy%, expr%)
 DECLARE SUB DrawChips (x%, y%, clr%)
 DECLARE SUB DrawBetChips (amt&)
+DECLARE SUB ChooseStake ()
 DECLARE SUB DrawCard (x%, y%, c%)
 DECLARE SUB DrawBackCard (x%, y%)
 DECLARE SUB DrawSuit (cx%, cy%, s%, size%, clr%)
@@ -36,6 +37,7 @@ DECLARE SUB PromptLine (m$)
 DECLARE SUB ClearPrompt ()
 DECLARE SUB ShowTotals (showHole%)
 DECLARE SUB ShowStatus ()
+DECLARE SUB FlashStatus (clr%)
 DECLARE SUB ClearTableArea ()
 DECLARE SUB PrintStats (row%)
 DECLARE SUB FarewellScreen ()
@@ -79,6 +81,8 @@ DIM SHARED dHand(1 TO 12)           ' dealer hand
 DIM SHARED dCount                   ' cards in dealer hand
 DIM SHARED bankroll AS LONG         ' player money
 DIM SHARED bet AS LONG              ' current wager
+DIM SHARED tblMin AS LONG           ' table minimum bet
+DIM SHARED tblMax AS LONG           ' table maximum bet
 DIM SHARED st AS StatsType          ' session statistics
 DIM SHARED dealerType               ' 0=Mike(brown) 1=Sandy(blonde) 2=Frank(gray+glasses)
 DIM SHARED hiTab(1 TO 5) AS HiEntry ' top-5 high score table (loaded from HISCORE.DAT)
@@ -98,10 +102,9 @@ showFarewell = 0
 playing = 1
 DO WHILE playing = 1
    dealerType = INT(RND * 3)
-   bankroll = 1000
    bet = 0
    st.played = 0: st.won = 0: st.lost = 0: st.pushed = 0
-   st.best = 1000
+   ChooseStake
    ShuffleDeck
    DrawTable
    DO
@@ -315,14 +318,16 @@ END SUB
 ' ---------------------------- MONEY ----------------------------------
 
 SUB GetBet
-   ' Prompts for a wager between $1 and the bankroll, with validation.
+   ' Prompts for a wager within table limits and available bankroll.
    DO
       ClearPrompt
       COLOR 15
       LOCATE 29, 3
-      PRINT "ENTER YOUR BET ($1 - $"; LTRIM$(STR$(bankroll)); "): ";
+      PRINT "BET $"; LTRIM$(STR$(tblMin)); "-$"; LTRIM$(STR$(tblMax));
+      PRINT " (BANKROLL $"; LTRIM$(STR$(bankroll)); "): ";
       b& = GetNum&
-      IF b& >= 1 AND b& <= bankroll THEN
+      IF b& = 0 THEN b& = tblMin: PRINT LTRIM$(STR$(tblMin));
+      IF b& >= tblMin AND b& <= tblMax AND b& <= bankroll THEN
          bet = b&
          ClearPrompt
          ShowStatus
@@ -338,7 +343,7 @@ FUNCTION GetNum&
    s$ = ""
    DO
       k$ = GetKey$
-      IF k$ = CHR$(13) AND LEN(s$) > 0 THEN EXIT DO
+      IF k$ = CHR$(13) THEN EXIT DO
       IF k$ = CHR$(8) AND LEN(s$) > 0 THEN
          s$ = LEFT$(s$, LEN(s$) - 1)
          PRINT CHR$(29); " "; CHR$(29);
@@ -378,13 +383,30 @@ SUB Settle (outcome, amt&, m$)
    IF bankroll > st.best THEN st.best = bankroll
    DealerSay m$
    ShowStatus
+   IF outcome > 0 THEN
+      FlashStatus 10               ' win / blackjack: bright green
+   ELSEIF outcome < 0 THEN
+      FlashStatus 12               ' loss / bust / surrender: bright red
+   END IF
 END SUB
 
 SUB ShowStatus
    COLOR 14
    LOCATE 28, 3
    PRINT "BANKROLL: $"; LTRIM$(STR$(bankroll));
-   PRINT "      BET: $"; LTRIM$(STR$(bet)); "          ";
+   PRINT "   BET: $"; LTRIM$(STR$(bet));
+   PRINT "   LIMIT: $"; LTRIM$(STR$(tblMin)); "-$"; LTRIM$(STR$(tblMax)); "   ";
+END SUB
+
+SUB FlashStatus (clr)
+   ' Blinks the status-bar strip in clr (win/loss) then restores it.
+   FOR i = 1 TO 3
+      LINE (6, 431)-(633, 473), clr, BF
+      Delay .06
+      LINE (6, 431)-(633, 473), 0, BF
+      ShowStatus
+      Delay .06
+   NEXT
 END SUB
 
 SUB ShowTotals (showHole)
@@ -787,7 +809,7 @@ SUB DrawBetChips (amt&)
    dv(3) = 25: dc(3) = 10: dr(3) = 15        ' green,  white rim
    dv(4) = 5: dc(4) = 4: dr(4) = 15          ' red,    white rim
    dv(5) = 1: dc(5) = 15: dr(5) = 8          ' white,  gray rim
-   LINE (486, 306)-(630, 420), 2, BF
+   LINE (486, 306)-(630, 418), 2, BF
    IF amt& <= 0 THEN EXIT SUB
    COLOR 14
    LOCATE 21, 64: PRINT "YOUR BET";
@@ -890,6 +912,43 @@ SUB TitleScreen
       IF KeyWait(.3) = 1 THEN EXIT DO
       IF PLAY(0) < 5 THEN PLAY "MB " + tune$
    LOOP
+END SUB
+
+SUB ChooseStake
+   ' Player picks a table; sets bankroll, tblMin, tblMax, and st.best.
+   CLS
+   BigText "CHOOSE", 248, 50, 4, 8
+   BigText "CHOOSE", 246, 48, 4, 14
+   BigText "YOUR TABLE", 176, 118, 4, 8
+   BigText "YOUR TABLE", 174, 116, 4, 14
+   COLOR 15
+   LOCATE 15, 22: PRINT "  TABLE         START       BET LIMITS";
+   COLOR 7
+   LOCATE 16, 22: PRINT "  -----         -----       ----------";
+   COLOR 10
+   LOCATE 17, 22: PRINT "(1) LOW STAKES   $  500      $5 - $50";
+   LOCATE 18, 22: PRINT "(2) MEDIUM       $ 1000      $5 - $100";
+   LOCATE 19, 22: PRINT "(3) HIGH ROLLER  $ 5000     $25 - $500";
+   COLOR 7
+   LOCATE 22, 30: PRINT "PRESS 1, 2 OR 3 TO SIT DOWN";
+   DO
+      k$ = GetKey$
+   LOOP UNTIL k$ = "1" OR k$ = "2" OR k$ = "3"
+   SELECT CASE k$
+   CASE "1"
+      bankroll = 500: tblMin = 5: tblMax = 50
+   CASE "2"
+      bankroll = 1000: tblMin = 5: tblMax = 100
+   CASE "3"
+      bankroll = 5000: tblMin = 25: tblMax = 500
+   END SELECT
+   st.best = bankroll
+   COLOR 14
+   IF k$ = "1" THEN LOCATE 17, 22: PRINT "(1) LOW STAKES   $  500      $5 - $50";
+   IF k$ = "2" THEN LOCATE 18, 22: PRINT "(2) MEDIUM       $ 1000      $5 - $100";
+   IF k$ = "3" THEN LOCATE 19, 22: PRINT "(3) HIGH ROLLER  $ 5000     $25 - $500";
+   SndChip
+   Delay .4
 END SUB
 
 FUNCTION GameOver

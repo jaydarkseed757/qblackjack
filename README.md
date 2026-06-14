@@ -12,6 +12,7 @@ A fully playable casino blackjack game written in a single file of Microsoft QBA
 - **Dealing animation** — cards slide from the deck pile across the table to their slot, and the hole card flips when revealed
 - **Denomination chip display** — your bet is broken into 500/100/25/5/1 chips and drawn as a stack per denomination on the felt
 - **Sound effects** — SOUND-command beeps for dealing, chips, wins, losses, busts, blackjack, and shuffling
+- **Win/loss flash** — the status bar blinks green on a win and red on a loss as the hand settles
 - **Session statistics** — hands played/won/lost, pushes, peak bankroll; shown on both the cash-out and game-over screens
 - **Persistent high score table** — top-5 all-time cash-outs saved to `HISCORE.DAT`; shown before the title screen and after each cash-out
 
@@ -26,20 +27,20 @@ A fully playable casino blackjack game written in a single file of Microsoft QBA
 
 ## Running
 
-1. Mount a directory containing `QBASIC.EXE` and copy `BLACKJCK.BAS` into it (or mount them separately)
+1. Mount a directory containing `QBASIC.EXE` and copy `blackjak.bas` into it (or mount them separately)
 2. From the DOS prompt:
 
 ```
-QBASIC.EXE /RUN BLACKJCK.BAS
+QBASIC.EXE /RUN blackjak.bas
 ```
 
-Or open `BLACKJCK.BAS` in QBASIC interactively and press **F5**.
+Or open `blackjak.bas` in QBASIC interactively and press **F5**.
 
 ## How to play
 
 | Key | Action |
 |-----|--------|
-| Digits + Enter | Enter your bet |
+| Digits + Enter | Enter your bet (Enter alone bets the table minimum) |
 | H | Hit |
 | S | Stand |
 | D | Double down (first action only) |
@@ -60,7 +61,7 @@ Or open `BLACKJCK.BAS` in QBASIC interactively and press **F5**.
 ## Project structure
 
 ```
-BLACKJCK.BAS      — complete game source (QBASIC 1.1)
+blackjak.bas      — complete game source (QBASIC 1.1)
 HISCORE.DAT     — top-5 high score table (created on first cash-out)
 screenshots/      — screenshots for this README
 ```
@@ -73,10 +74,10 @@ The source is divided into labelled sections:
 |---------|------------|
 | Initialization | `DEFINT A-Z`, shared state, `StatsType`, `HiEntry`, main loop |
 | Gameplay | `PlayHand`, `DealOne` |
-| Money / UI | `GetBet`, `GetNum&`, `Settle`, `ShowStatus`, `ShowTotals`, `PromptLine`, `ClearPrompt` |
+| Money / UI | `GetBet`, `GetNum&`, `Settle`, `ShowStatus`, `FlashStatus`, `ShowTotals`, `PromptLine`, `ClearPrompt` |
 | Cards | `ShuffleDeck`, `NextCard%`, `HandValue%`, `DrawCard`, `DrawBackCard`, `DrawSuit`, `AnimateDeal`, `FlipHoleCard` |
 | Graphics / Dealer | `BigLetter`, `BigText`, `DrawDealer`, `DrawChips`, `DrawBetChips`, `DrawTable`, `ClearTableArea`, `DealerSay` |
-| Screens / Stats | `TitleScreen`, `GameOver%`, `FarewellScreen`, `PrintStats`, `LoadHiScores`, `SaveHiScores`, `CheckHiScore`, `ShowHiScores` |
+| Screens / Stats | `TitleScreen`, `ChooseStake`, `GameOver%`, `FarewellScreen`, `PrintStats`, `LoadHiScores`, `SaveHiScores`, `CheckHiScore`, `ShowHiScores` |
 | Utilities | `Delay`, `GetKey$`, `KeyWait%` |
 | Sound | `SndDeal`, `SndChip`, `SndWin`, `SndLose`, `SndBust`, `SndBlackjack`, `SndPush`, `SndShuffle` |
 
@@ -86,7 +87,7 @@ The source is divided into labelled sections:
 - No line continuations
 - No QuickBASIC 4.5-only features, no machine code, no external libraries
 - `PRINT` in SCREEN 12 draws with a black cell background — card corner ranks use the custom `BigLetter` bitmap font instead to preserve the white card face
-- All 44 `DECLARE` statements have matching `SUB`/`FUNCTION` definitions; `END SUB`/`END FUNCTION` counts are balanced
+- All 46 `DECLARE` statements have matching `SUB`/`FUNCTION` definitions; `END SUB`/`END FUNCTION` counts are balanced
 
 ## License
 

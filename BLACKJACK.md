@@ -1,12 +1,12 @@
 # How Blackjack Deluxe VGA Works
 
-A deep-dive into the code structure, design decisions, and QBASIC-specific techniques used in `BLACKJCK.BAS`.
+A deep-dive into the code structure, design decisions, and QBASIC-specific techniques used in `blackjak.bas`.
 
 ---
 
 ## Overall architecture
 
-The file is a single ~1100-line QBASIC 1.1 program. QBASIC requires all `SUB` and `FUNCTION` procedures to be declared before the main body, so the file opens with 44 `DECLARE` statements. The module-level code (the `TYPE` definitions, the shared `DIM` block, and the startup body that runs top-to-bottom from `RANDOMIZE TIMER` to `END`) sits above the first procedure definition. Everything below that is subprograms, which QBASIC hoists and compiles before execution begins.
+The file is a single ~1150-line QBASIC 1.1 program. QBASIC requires all `SUB` and `FUNCTION` procedures to be declared before the main body, so the file opens with 46 `DECLARE` statements. The module-level code (the `TYPE` definitions, the shared `DIM` block, and the startup body that runs top-to-bottom from `RANDOMIZE TIMER` to `END`) sits above the first procedure definition. Everything below that is subprograms, which QBASIC hoists and compiles before execution begins.
 
 The code is divided into ten labelled sections separated by comment banners:
 
@@ -83,7 +83,7 @@ LOOP
 
 ## The main game loop
 
-The outermost loop (`DO WHILE playing = 1`) handles full play sessions. Inside it, a second loop runs hands until the bankroll hits zero or the player quits. When the bankroll reaches zero, `GameOver` is called — it returns 1 (play again with a fresh $1000) or 0 (exit). This two-level loop structure means a "play again" resets stats and bankroll cleanly without restarting the program.
+The outermost loop (`DO WHILE playing = 1`) handles full play sessions. After the title screen, `ChooseStake` runs before the inner hand loop — the player picks a table (Low / Medium / High Roller), which sets the starting `bankroll`, `tblMin`, `tblMax`, and `st.best`. Inside it, a second loop runs hands until the bankroll hits zero or the player quits. When the bankroll reaches zero, `GameOver` is called — it returns 1 (play again, re-entering `ChooseStake`) or 0 (exit). This two-level loop structure means a "play again" resets stats and bankroll cleanly without restarting the program.
 
 ---
 
@@ -117,7 +117,7 @@ All outcomes funnel through `Settle(outcome, amt&, m$)`:
 | -1 | loss / surrender | -amt& |
 | -2 | bust | -amt& |
 
-`Settle` updates `bankroll`, increments the right stat counter, triggers the outcome sound, calls `DealerSay` with the result message, and refreshes the status bar. Nothing else touches these — this is the design constraint that keeps outcomes consistent.
+`Settle` updates `bankroll`, increments the right stat counter, triggers the outcome sound, calls `DealerSay` with the result message, and refreshes the status bar. Finally it flashes the status bar via `FlashStatus` — bright green (color 10) when `outcome > 0`, bright red (color 12) when `outcome < 0`, no flash on a push. `FlashStatus clr` blinks the black status strip `(6,431)-(633,473)` three times, redrawing `ShowStatus` on each off-beat so the bar ends in its normal state. Because every win and loss funnels through `Settle`, the flash is automatically consistent across all outcome paths (blackjack, surrender, bust, dealer bust, etc.). Nothing else touches these — this is the design constraint that keeps outcomes consistent.
 
 Note that insurance is handled outside `Settle` in `PlayHand` directly, because it settles before the main hand result and at a different amount.
 
@@ -280,7 +280,7 @@ The title screen plays a looping 16-note casino-jazz phrase using `PLAY "MB ..."
 
 `KeyWait(sec!)` adds a timeout: spin for up to `sec!` seconds, return 1 if a key was pressed or 0 if timed out. This powers the blinking "PRESS ANY KEY" on the title screen — the loop alternates between bright yellow (color 14) and dark grey (color 8), each iteration calling `KeyWait` for the blink half-period.
 
-`GetNum&` handles numeric bet entry character by character: digits are appended to a string and echoed, backspace (`CHR$(8)`) removes the last character and backs up the cursor with `CHR$(29)` (the QBASIC cursor-left code). This avoids `INPUT` which would let the player type arbitrary text and would scroll the screen.
+`GetNum&` handles numeric bet entry character by character: digits are appended to a string and echoed, backspace (`CHR$(8)`) removes the last character and backs up the cursor with `CHR$(29)` (the QBASIC cursor-left code). Enter is accepted at any point — including immediately with an empty string, in which case `GetNum&` returns 0. `GetBet` treats a 0 return as "player hit Enter with no input" and defaults the bet to `tblMin`, printing the value at the cursor so the player sees it before the deal. This lets experienced players skip digit entry and just hit Enter to bet the minimum each hand. This approach avoids `INPUT`, which would let the player type arbitrary text and would scroll the screen.
 
 ---
 
@@ -298,9 +298,23 @@ This exits immediately on rollover rather than hanging. An imperfect delay at mi
 
 ---
 
+## Table selection (ChooseStake)
+
+`ChooseStake` runs once at the start of each session (and again after a "play again" from the bust screen). It presents three numbered table options and waits for key 1, 2, or 3:
+
+| Key | Table | Starting bankroll | Bet limits |
+|-----|-------|------------------|------------|
+| 1 | Low Stakes | $500 | $5 – $50 |
+| 2 | Medium | $1,000 | $5 – $100 |
+| 3 | High Roller | $5,000 | $25 – $500 |
+
+On selection it sets four shared variables — `bankroll`, `tblMin`, `tblMax`, and `st.best` — then highlights the chosen row in yellow and plays `SndChip`. All subsequent bet validation in `GetBet` uses `tblMin`/`tblMax` instead of hardcoded limits, and `ShowStatus` displays the active range on the status bar.
+
+---
+
 ## High score persistence (HISCORE.DAT)
 
-The top-5 table is stored in a random-access binary file `HISCORE.DAT` alongside `BLACKJCK.BAS`. Each record is a `HiEntry` TYPE:
+The top-5 table is stored in a random-access binary file `HISCORE.DAT` alongside `blackjak.bas`. Each record is a `HiEntry` TYPE:
 
 ```basic
 TYPE HiEntry
@@ -322,7 +336,6 @@ Only `FarewellScreen` sessions (player cashes out with money) are eligible for t
 
 - **Split pairs** — would require a second hand array (`pHand2`) and a second player turn loop in `PlayHand`, plus UI to show two hands simultaneously. The biggest gap in casino rules.
 - **Multiple decks** — a 2/4/6-deck shoe with a visible cut card; would change `ShuffleDeck` to fill a larger array and adjust the reshuffle threshold
-- **Configurable bankroll & bet limits** — startup choice of $500/$1000/$5000 and a table min/max
 - **Side bets** — Perfect Pairs or 21+3, wired through `Settle`
 - **Basic strategy hint mode** — optional "book" play shown before the player acts
 - **`PLAY`-based in-game music** — background music plays only on the title screen; in-game sounds use `SOUND` only
